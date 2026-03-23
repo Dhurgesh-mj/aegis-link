@@ -69,6 +69,13 @@ export default function Navbar() {
                 CAMPAIGNS
               </Link>
               <Link
+                href="/replay"
+                className={`nav-link ${isActive("/replay") ? "active" : ""}`}
+              >
+                <span className="nav-link-dot" />
+                REPLAY
+              </Link>
+              <Link
                 href="/profile"
                 className={`nav-link ${isActive("/profile") ? "active" : ""}`}
               >

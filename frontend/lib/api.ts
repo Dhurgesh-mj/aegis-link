@@ -271,5 +271,103 @@ export async function fetchPatterns(): Promise<BacktestEvent[]> {
   return data;
 }
 
-export default api;
+// ── v3: New Interfaces ──────────────────────────────────
 
+export interface FomoData {
+  fomo_score: number;
+  fomo_level: string;
+  is_fomo_driven: boolean;
+  raw_velocity: number;
+  acceleration: number;
+  coin?: string;
+}
+
+export interface StrategyData {
+  action: string;
+  reason: string;
+  confidence: string;
+  risk: string;
+  color: string;
+}
+
+export interface MarketEmotion {
+  index: number;
+  label: string;
+  color: string;
+  pump_count: number;
+  dump_count: number;
+  watch_count: number;
+  dominant_coin: string | null;
+  avg_bot_risk: number;
+  avg_fomo: number;
+  total_coins: number;
+  ts: string;
+}
+
+export interface EmotionHistory {
+  index_val: number;
+  label: string;
+  pump_count: number;
+  dump_count: number;
+  ts: string;
+}
+
+export interface LagData {
+  origin: string;
+  origin_label: string;
+  lag_map: Record<string, { seconds: number; label: string }>;
+  propagation_path: string[];
+  total_spread_seconds: number;
+  insight: string;
+}
+
+export interface CorrelationPair {
+  coin_a: string;
+  coin_b: string;
+  correlation: number;
+  type: string;
+  strength: string;
+}
+
+export interface CorrelationMatrix {
+  matrix: Record<string, Record<string, number>>;
+  coins: string[];
+  strong_pairs: CorrelationPair[];
+  ts: string;
+}
+
+// ── v3: New API Functions ───────────────────────────────
+
+export async function fetchMarketEmotion(): Promise<MarketEmotion> {
+  const { data } = await api.get("/market/emotion");
+  return data;
+}
+
+export async function fetchEmotionHistory(n?: number): Promise<EmotionHistory[]> {
+  const { data } = await api.get("/market/emotion/history", {
+    params: n ? { n } : {},
+  });
+  return data;
+}
+
+export async function fetchAllFomo(): Promise<FomoData[]> {
+  const { data } = await api.get("/market/fomo");
+  return data;
+}
+
+export async function fetchCoinFomo(ticker: string): Promise<FomoData> {
+  const { data } = await api.get(`/coin/${ticker}/fomo`);
+  return data;
+}
+
+export async function fetchCoinStrategy(ticker: string): Promise<StrategyData> {
+  const { data } = await api.get(`/coin/${ticker}/strategy`);
+  return data;
+}
+
+export async function fetchCorrelation(): Promise<CorrelationMatrix> {
+  const { data } = await api.get("/market/correlation");
+  return data;
+}
+
+export default api;

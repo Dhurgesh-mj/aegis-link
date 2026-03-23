@@ -9,7 +9,17 @@ import { isLoggedIn, getCurrentUsername } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
 import SignalFeed from "@/components/SignalFeed";
 import CoinLeaderboard from "@/components/CoinLeaderboard";
+import MarketEmotionPanel from "@/components/MarketEmotion";
+import CorrelationMatrixComp from "@/components/CorrelationMatrix";
 import { useSignalFeed } from "@/lib/websocket";
+import {
+  fetchMarketEmotion,
+  fetchEmotionHistory,
+  fetchCorrelation,
+  type MarketEmotion,
+  type EmotionHistory,
+  type CorrelationMatrix,
+} from "@/lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -32,6 +42,9 @@ export default function DashboardPage() {
     botDetections: 0,
   });
   const [lastSignalTs, setLastSignalTs] = useState("");
+  const [emotion, setEmotion] = useState<MarketEmotion | null>(null);
+  const [emotionHist, setEmotionHist] = useState<EmotionHistory[]>([]);
+  const [correlation, setCorrelation] = useState<CorrelationMatrix | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -81,6 +94,38 @@ export default function DashboardPage() {
     return () => clearInterval(iv);
   }, [fetchHealth]);
 
+  // v3: Fetch market emotion
+  const loadEmotion = useCallback(async () => {
+    try {
+      const [em, hist] = await Promise.all([
+        fetchMarketEmotion(),
+        fetchEmotionHistory(24),
+      ]);
+      setEmotion(em);
+      setEmotionHist(hist);
+    } catch { /* offline */ }
+  }, []);
+
+  useEffect(() => {
+    loadEmotion();
+    const iv = setInterval(loadEmotion, 60000);
+    return () => clearInterval(iv);
+  }, [loadEmotion]);
+
+  // v3: Fetch correlation
+  const loadCorrelation = useCallback(async () => {
+    try {
+      const data = await fetchCorrelation();
+      setCorrelation(data);
+    } catch { /* offline */ }
+  }, []);
+
+  useEffect(() => {
+    loadCorrelation();
+    const iv = setInterval(loadCorrelation, 120000);
+    return () => clearInterval(iv);
+  }, [loadCorrelation]);
+
   if (!mounted) return null;
 
   return (
@@ -119,6 +164,18 @@ export default function DashboardPage() {
         </div>
         <div className="panel-right">
           <CoinLeaderboard />
+          {/* v3: Market Emotion */}
+          {emotion && (
+            <div className="panel-right-section">
+              <MarketEmotionPanel emotion={emotion} history={emotionHist} />
+            </div>
+          )}
+          {/* v3: Correlation Matrix */}
+          {correlation && (
+            <div className="panel-right-section">
+              <CorrelationMatrixComp matrix={correlation} />
+            </div>
+          )}
         </div>
       </div>
 
@@ -217,6 +274,10 @@ export default function DashboardPage() {
           display: flex;
           flex-direction: column;
           min-height: calc(100vh - 210px);
+          overflow-y: auto;
+        }
+        .panel-right-section {
+          border-top: 1px solid var(--border);
         }
 
         /* ── Status Bar ── */

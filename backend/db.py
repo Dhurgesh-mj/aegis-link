@@ -146,6 +146,28 @@ def init_db() -> None:
             data TEXT NOT NULL,
             cached_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS emotion_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            index_val REAL NOT NULL,
+            label TEXT NOT NULL,
+            pump_count INTEGER NOT NULL,
+            dump_count INTEGER NOT NULL,
+            avg_bot_risk REAL NOT NULL,
+            ts TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_emotion_ts ON emotion_history(ts DESC);
+
+        CREATE TABLE IF NOT EXISTS fomo_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            coin TEXT NOT NULL,
+            fomo_score REAL NOT NULL,
+            fomo_level TEXT NOT NULL,
+            ts TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_fomo_coin ON fomo_history(coin, ts DESC);
     """)
     conn.commit()
     log.info("Database initialized at %s", DB_PATH)

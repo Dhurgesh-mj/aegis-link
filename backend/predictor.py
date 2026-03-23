@@ -34,6 +34,10 @@ from anomaly_detector import AnomalyDetector
 from campaign_detector import CampaignDetector
 from onchain_fetcher import compute_onchain_score
 from pattern_matcher import PatternMatcher
+from fomo_detector import compute_fomo_score, store_fomo
+from strategy_engine import recommend
+from lag_detector import detect_lag
+from market_emotion import compute_market_emotion
 import db
 
 logging.basicConfig(
@@ -55,6 +59,7 @@ pattern_matcher = PatternMatcher()
 _coin_events: dict[str, deque] = defaultdict(lambda: deque(maxlen=1000))
 _prev_window_counts: dict[str, int] = defaultdict(int)
 _volume_data: dict[str, float] = defaultdict(float)
+_bootstrap_coins: set[str] = set()  # Track which coins are bootstrapped this cycle
 _signals_today_count = 0
 _start_time = time.time()
 
@@ -233,6 +238,10 @@ async def _analyze_coin(coin: str, events: list[dict]) -> dict | None:
 
     # Update previous window count
     _prev_window_counts[coin] = current_count
+    try:
+        redis_client.setex(f"aegis:prev_count:{coin}", 1200, str(current_count))
+    except Exception:
+        pass
 
     # ── v2: Update anomaly baseline ────────────────────
     try:
@@ -255,11 +264,78 @@ async def _analyze_coin(coin: str, events: list[dict]) -> dict | None:
         signal_type = "WATCH"
 
     # ── Velocity percentage ─────────────────────────────
+    # Use Redis-persisted prev_count if local is 0
+    if prev_count == 0:
+        try:
+            stored = redis_client.get(f"aegis:prev_count:{coin}")
+            if stored:
+                prev_count = int(float(stored))
+        except Exception:
+            pass
+
     velocity_pct = 0
-    if prev_count > 0:
+    if coin in _bootstrap_coins:
+        # Bootstrap events: use price_change_24h as velocity proxy
+        pc = _volume_data.get(coin, 0)
+        velocity_pct = round(pc) if abs(pc) > 0.5 else 0
+    elif prev_count > 0:
         velocity_pct = round(((current_count - prev_count) / prev_count) * 100)
     elif current_count > 0:
-        velocity_pct = current_count * 100
+        velocity_pct = min(current_count * 10, 100)  # Capped instead of *100
+
+    # ── v3: Mention acceleration ────────────────────────
+    try:
+        prev_vel_raw = redis_client.get(f"aegis:prev_velocity:{coin}")
+        prev_velocity = float(prev_vel_raw) if prev_vel_raw else 0.0
+    except Exception:
+        prev_velocity = 0.0
+    acceleration = velocity_pct - prev_velocity
+    try:
+        redis_client.setex(f"aegis:prev_velocity:{coin}", 600, str(velocity_pct))
+    except Exception:
+        pass
+
+    # ── v3: FOMO detection ──────────────────────────────
+    try:
+        fomo_result = compute_fomo_score(
+            velocity_pct=velocity_pct,
+            sentiment_confidence=avg_confidence,
+            mention_acceleration=acceleration,
+            bot_risk=bot_risk,
+        )
+        store_fomo(coin, fomo_result)
+    except Exception as exc:
+        log.debug("FOMO detection failed for %s: %s", coin, exc)
+        fomo_result = {"fomo_score": 0, "fomo_level": "NONE", "is_fomo_driven": False,
+                       "raw_velocity": 0, "acceleration": 0, "bot_adjusted": False}
+
+    # ── v3: Lag detection ───────────────────────────────
+    try:
+        lag_result = detect_lag(window_events, coin)
+    except Exception as exc:
+        log.debug("Lag detection failed for %s: %s", coin, exc)
+        lag_result = {"origin": None, "origin_label": "", "lag_map": {},
+                      "propagation_path": [], "total_spread_seconds": 0, "insight": ""}
+
+    # ── v3: Strategy recommendation ─────────────────────
+    try:
+        strategy_result = recommend(
+            signal=signal_type,
+            score=score,
+            bot_risk=bot_risk,
+            fomo_score=fomo_result["fomo_score"],
+            fomo_level=fomo_result["fomo_level"],
+            campaign_detected=campaign_result.get("campaign_detected", False),
+            onchain_score=onchain_score,
+            z_score=anomaly_result.get("z_score", 0),
+            confidence_interval=interval,
+            sentiment=overall_sentiment,
+            sentiment_confidence=avg_confidence,
+        )
+    except Exception as exc:
+        log.debug("Strategy recommendation failed for %s: %s", coin, exc)
+        strategy_result = {"action": "WATCH", "reason": "Error", "confidence": "LOW",
+                           "risk": "UNKNOWN", "color": "watch"}
 
     # ── Top source ──────────────────────────────────────
     source_counts: dict[str, int] = defaultdict(int)
@@ -267,7 +343,7 @@ async def _analyze_coin(coin: str, events: list[dict]) -> dict | None:
         source_counts[evt.get("source", "unknown")] += 1
     top_source = max(source_counts, key=source_counts.get) if source_counts else "unknown"
 
-    # ── Explanation (v2: richer) ────────────────────────
+    # ── Explanation (v3: richer) ────────────────────────
     parts = []
     if velocity > 50:
         parts.append(f"+{velocity:.0f}% mention spike")
@@ -289,10 +365,14 @@ async def _analyze_coin(coin: str, events: list[dict]) -> dict | None:
         parts.append(
             f"~{interval['avg_lead_minutes']:.0f}min before price move historically"
         )
+    if fomo_result["is_fomo_driven"]:
+        parts.append(f"FOMO {fomo_result['fomo_level']}")
+    if strategy_result["action"] in ("BUY", "AVOID"):
+        parts.append(f"STRATEGY: {strategy_result['action']}")
 
     explanation = f"${coin}: " + ", ".join(parts) if parts else f"${coin}: monitoring via {top_source}"
 
-    # ── Build signal dict (v2: enriched) ────────────────
+    # ── Build signal dict (v3: enriched) ────────────────
     signal = {
         "coin": coin,
         "score": score,
@@ -313,6 +393,9 @@ async def _analyze_coin(coin: str, events: list[dict]) -> dict | None:
         "onchain_score": onchain_score,
         "confidence_interval": interval,
         "similar_patterns": similar[:3],
+        "fomo": fomo_result,
+        "strategy": strategy_result,
+        "lag": lag_result,
     }
 
     # ── Publish to Redis pub/sub (for real-time WS) ────
@@ -372,6 +455,7 @@ async def prediction_loop():
                                 pass
 
             bucketed = _bucket_events_by_coin(all_events)
+            _bootstrap_coins.clear()  # Reset each cycle
             tasks = []
             for coin in TRACKED_COINS:
                 coin_events = list(bucketed.get(coin, []))
@@ -379,6 +463,7 @@ async def prediction_loop():
                     boots = _market_bootstrap_events(coin)
                     if boots:
                         coin_events = boots
+                        _bootstrap_coins.add(coin)  # Mark as bootstrapped
                         pc = boots[0].get("price_change_24h")
                         if pc is not None:
                             _volume_data[coin] = pc
@@ -386,9 +471,19 @@ async def prediction_loop():
 
             if tasks:
                 results = await asyncio.gather(*tasks, return_exceptions=True)
+                successful_signals = []
                 for r in results:
                     if isinstance(r, Exception):
                         log.error("Coin analysis error: %s", r)
+                    elif isinstance(r, dict):
+                        successful_signals.append(r)
+
+                # ── v3: Market emotion after all coins ─────────
+                if successful_signals:
+                    try:
+                        compute_market_emotion(successful_signals)
+                    except Exception as exc:
+                        log.debug("Market emotion computation error: %s", exc)
 
         except Exception as exc:
             log.error("Prediction loop error: %s", exc)

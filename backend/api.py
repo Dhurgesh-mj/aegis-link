@@ -37,6 +37,10 @@ from campaign_detector import CampaignDetector
 from onchain_fetcher import fetch_dexscreener
 from backtest_engine import BacktestEngine
 from pattern_matcher import PatternMatcher, PRE_SEEDED_PATTERNS
+from fomo_detector import get_all_fomo
+from market_emotion import compute_market_emotion, get_emotion_history
+from correlation_engine import compute_full_matrix
+from strategy_engine import recommend as strategy_recommend
 
 logging.basicConfig(
     level=logging.INFO,
@@ -495,6 +499,90 @@ async def route_onchain(coin: str):
 async def route_patterns():
     """Get all pre-seeded historical patterns."""
     return PRE_SEEDED_PATTERNS
+
+
+# ── v3: Market Intelligence Routes ──────────────────────
+
+@app.get("/market/emotion")
+async def route_market_emotion():
+    """Get current market-wide emotion index."""
+    try:
+        r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+        cached = r.get("aegis:market_emotion")
+        if cached:
+            return json.loads(cached)
+    except Exception:
+        pass
+    # Compute from latest signals
+    try:
+        all_signals = db.get_all_signals() or []
+        return compute_market_emotion(all_signals)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/market/emotion/history")
+async def route_emotion_history(n: int = 48):
+    """Get emotion history for sparkline charts."""
+    return get_emotion_history(n)
+
+
+@app.get("/market/fomo")
+async def route_all_fomo():
+    """Get FOMO data for all tracked coins."""
+    return await get_all_fomo()
+
+
+@app.get("/market/correlation")
+async def route_correlation():
+    """Get coin correlation matrix."""
+    return await compute_full_matrix()
+
+
+@app.get("/coin/{ticker}/fomo")
+async def route_coin_fomo(ticker: str):
+    """Get FOMO data for a specific coin."""
+    try:
+        r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+        cached = r.get(f"aegis:fomo:{ticker.upper()}")
+        if cached:
+            return json.loads(cached)
+    except Exception:
+        pass
+    raise HTTPException(status_code=404, detail=f"No FOMO data for {ticker.upper()}")
+
+
+@app.get("/coin/{ticker}/strategy")
+async def route_coin_strategy(ticker: str):
+    """Get strategy recommendation for a specific coin."""
+    coin = ticker.upper()
+    try:
+        signal = db.get_signal_for_coin(coin)
+        if not signal:
+            raise HTTPException(status_code=404, detail=f"No signal data for {coin}")
+
+        fomo = signal.get("fomo", {}) or {}
+        campaign = signal.get("campaign", {}) or {}
+        anomaly = signal.get("anomaly", {}) or {}
+        ci = signal.get("confidence_interval", {}) or {}
+
+        return strategy_recommend(
+            signal=signal.get("signal", "WATCH"),
+            score=signal.get("score", 0),
+            bot_risk=signal.get("bot_risk", 0),
+            fomo_score=fomo.get("fomo_score", 0),
+            fomo_level=fomo.get("fomo_level", "NONE"),
+            campaign_detected=campaign.get("campaign_detected", False),
+            onchain_score=signal.get("onchain_score", 0),
+            z_score=anomaly.get("z_score", 0),
+            confidence_interval=ci,
+            sentiment=signal.get("sentiment", "NEUTRAL"),
+            sentiment_confidence=signal.get("confidence", 50),
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 # ── v2: Operator WebSocket ──────────────────────────────

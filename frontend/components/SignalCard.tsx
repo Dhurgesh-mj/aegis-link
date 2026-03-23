@@ -8,6 +8,8 @@ import type { Signal } from "@/lib/api";
 import { formatSentimentLabel } from "@/lib/formatSentiment";
 import HypeScoreBar from "./HypeScoreBar";
 import BotRiskBadge from "./BotRiskBadge";
+import StrategyBadge from "./StrategyBadge";
+import FomoMeter from "./FomoMeter";
 
 interface SignalCardProps {
   signal: Signal;
@@ -145,6 +147,16 @@ export default function SignalCard({ signal, isNew = false }: SignalCardProps) {
         <HypeScoreBar score={signal.score} signal={signal.signal} height={2} />
       </div>
 
+      {/* ROW 2b: Strategy Badge (v3) */}
+      {(signal as any).strategy && (
+        <div className="sc-strategy-row">
+          <StrategyBadge strategy={(signal as any).strategy} showReason={false} />
+          {(signal as any).fomo?.is_fomo_driven && (
+            <FomoMeter fomo={(signal as any).fomo} compact />
+          )}
+        </div>
+      )}
+
       {/* ROW 3: Metadata inline */}
       <div className="sc-row3">
         <span className="sc-meta">
@@ -245,6 +257,14 @@ export default function SignalCard({ signal, isNew = false }: SignalCardProps) {
         /* ROW 2 */
         .sc-bar {
           margin-bottom: 8px;
+        }
+
+        /* ROW 2b: Strategy + FOMO */
+        .sc-strategy-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 6px;
         }
 
         /* ROW 3 */

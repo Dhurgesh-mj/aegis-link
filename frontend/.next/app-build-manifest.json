@@ -16,15 +16,20 @@
       "static/chunks/main-app.js",
       "static/chunks/app/dashboard/page.js"
     ],
-    "/backtest/page": [
+    "/replay/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/backtest/page.js"
+      "static/chunks/app/replay/page.js"
     ],
     "/campaigns/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/campaigns/page.js"
+    ],
+    "/backtest/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/backtest/page.js"
     ]
   }
 }
