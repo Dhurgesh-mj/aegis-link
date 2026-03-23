@@ -1,0 +1,14 @@
+praw
+asyncpraw
+aiohttp
+beautifulsoup4
+telethon
+redis
+fastapi
+uvicorn
+rich
+requests
+python-dotenv
+PyJWT
+bcrypt
+websockets
