@@ -109,8 +109,11 @@ export function useSignalFeed(): UseSignalFeedReturn {
         }, delay);
       };
 
-      ws.onerror = (error) => {
-        console.error("[aegis-ws] Error:", error);
+      ws.onerror = () => {
+        // Only warn if the socket isn't open — onerror can fire transiently before onopen
+        if (ws.readyState !== WebSocket.OPEN) {
+          console.warn(`[aegis-ws] WebSocket error (url: ${WS_URL}) — is the backend running?`);
+        }
       };
     } catch (err) {
       console.error("[aegis-ws] Connection failed:", err);
@@ -269,8 +272,10 @@ export function useOperatorFeed(): UseOperatorFeedReturn {
         }, delay);
       };
 
-      ws.onerror = (error) => {
-        console.error("[aegis-op-ws] Error:", error);
+      ws.onerror = () => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          console.warn(`[aegis-op-ws] WebSocket error (url: ${OPERATOR_WS_URL}) — is the backend running?`);
+        }
       };
     } catch (err) {
       console.error("[aegis-op-ws] Connection failed:", err);

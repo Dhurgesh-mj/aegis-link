@@ -90,6 +90,20 @@ interface Phase {
 function buildPhases(item: ReplayItem): Phase[] {
   const peak = item.score;
   const vel = item.velocity_pct;
+  const isDump = item.signal === "DUMP";
+
+  if (isDump) {
+    // DUMP: starts stable, then crashes
+    return [
+      { start: 0,  end: 20, score: Math.round(peak * 0.85), signal: "WATCH",  sentiment: "NEUTRAL",  fomo_level: "LOW",     strategy_action: "WATCH", velocity_pct: Math.round(vel * 0.1) },
+      { start: 20, end: 40, score: Math.round(peak * 0.70), signal: "WATCH",  sentiment: "BEARISH",  fomo_level: "MEDIUM",  strategy_action: "WATCH", velocity_pct: Math.round(vel * 0.4) },
+      { start: 40, end: 60, score: Math.round(peak * 0.45), signal: "DUMP",   sentiment: "BEARISH",  fomo_level: "HIGH",    strategy_action: item.strategy?.action || "AVOID", velocity_pct: vel },
+      { start: 60, end: 80, score: Math.round(peak * 0.20), signal: "DUMP",   sentiment: "BEARISH",  fomo_level: "EXTREME", strategy_action: "AVOID", velocity_pct: Math.round(vel * 1.3) },
+      { start: 80, end: 100, score: Math.round(peak * 0.10), signal: "DUMP",  sentiment: "BEARISH",  fomo_level: "HIGH",    strategy_action: "AVOID", velocity_pct: Math.round(vel * 0.8) },
+    ];
+  }
+
+  // PUMP / WATCH: starts low, builds up
   return [
     { start: 0,  end: 20, score: Math.round(peak * 0.35), signal: "WATCH", sentiment: "NEUTRAL", fomo_level: "LOW",     strategy_action: "WATCH", velocity_pct: Math.round(vel * 0.2) },
     { start: 20, end: 45, score: Math.round(peak * 0.60), signal: "WATCH", sentiment: "BULLISH", fomo_level: "MEDIUM",  strategy_action: "WATCH", velocity_pct: Math.round(vel * 0.5) },
@@ -183,7 +197,21 @@ export default function ReplayPage() {
     }
   }, [progress, signalFired, selected]);
 
-  // Canvas price chart
+  // Seeded PRNG for per-coin unique chart noise
+  const coinSeed = useRef(0);
+  useEffect(() => {
+    if (!selected) return;
+    let s = 0;
+    for (let i = 0; i < selected.coin.length; i++) s += selected.coin.charCodeAt(i) * (i + 1);
+    coinSeed.current = s;
+  }, [selected]);
+
+  const seeded = (i: number) => {
+    const x = Math.sin((coinSeed.current + i) * 9301 + 49297) * 233280;
+    return x - Math.floor(x);
+  };
+
+  // Canvas price chart — unique per coin, DUMP = red downfall, PUMP = green rise
   useEffect(() => {
     if (!selected || !canvasRef.current) return;
     const canvas = canvasRef.current;
@@ -196,41 +224,86 @@ export default function ReplayPage() {
 
     const pl = 12, pr = 12, pt = 12, pb = 20;
     const cw = w - pl - pr, ch = h - pt - pb;
+    const isDump = selected.signal === "DUMP";
+    const lineColor = isDump ? "#ff3355" : "#00ff88";
+    const signalPct = isDump ? 0.40 : 0.45; // where signal fires
     const gain = selected.isLive ? selected.score : selected.price_24h_pct;
-    const maxY = Math.max(gain * 1.2, 10);
+    const maxY = isDump ? Math.max(gain * 1.4, 20) : Math.max(gain * 1.2, 10);
 
     // Grid
     ctx.strokeStyle = "#0f1a2e"; ctx.lineWidth = 0.5;
-    for (let p = 0; p <= maxY; p += Math.max(10, Math.round(maxY / 4))) {
+    const gridStep = Math.max(10, Math.round(maxY / 4));
+    for (let p = 0; p <= maxY; p += gridStep) {
       const y = pt + ch - (p / maxY) * ch;
       ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(w - pr, y); ctx.stroke();
       ctx.fillStyle = "#3a4a6b"; ctx.font = "8px 'Share Tech Mono', monospace";
-      ctx.textAlign = "right"; ctx.fillText(selected.isLive ? `${p.toFixed(0)}` : `+${p.toFixed(0)}%`, pl - 2, y + 3);
+      ctx.textAlign = "right";
+      if (isDump) {
+        ctx.fillText(`${(maxY - p).toFixed(0)}`, pl - 2, y + 3);
+      } else {
+        ctx.fillText(selected.isLive ? `${p.toFixed(0)}` : `+${p.toFixed(0)}%`, pl - 2, y + 3);
+      }
+    }
+
+    // Build unique per-coin noise offsets
+    const totalPts = 120;
+    const noise: number[] = [];
+    for (let i = 0; i < totalPts; i++) {
+      noise.push((seeded(i * 3) - 0.5) * 0.12);
     }
 
     // Price/score line
-    ctx.beginPath(); ctx.strokeStyle = "#00ff88"; ctx.lineWidth = 2; ctx.lineJoin = "round";
-    const totalPts = 100;
+    ctx.beginPath(); ctx.strokeStyle = lineColor; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.lineCap = "round";
     const visPts = Math.floor((progress / 100) * totalPts);
+
     for (let i = 0; i <= visPts; i++) {
       const pct = i / totalPts;
       const x = pl + pct * cw;
       let val = 0;
-      if (pct < 0.45) val = gain * 0.2 * (pct / 0.45);
-      else val = gain * 0.2 + (gain * 0.8) * Math.pow((pct - 0.45) / 0.55, 0.6);
+
+      if (isDump) {
+        // DUMP curve: starts high, crashes down
+        if (pct < signalPct) {
+          // Stable with slight drift down
+          val = gain * (0.85 - 0.15 * (pct / signalPct));
+        } else {
+          // Sharp crash after signal
+          const crashT = (pct - signalPct) / (1 - signalPct);
+          val = gain * 0.70 * (1 - Math.pow(crashT, 0.55));
+        }
+      } else {
+        // PUMP curve: starts low, ramps up
+        if (pct < signalPct) {
+          val = gain * 0.2 * (pct / signalPct);
+        } else {
+          val = gain * 0.2 + (gain * 0.8) * Math.pow((pct - signalPct) / (1 - signalPct), 0.6);
+        }
+      }
+
+      // Add per-coin noise for uniqueness
+      const n = noise[i] || 0;
+      val = Math.max(0, val * (1 + n));
+
       const y = pt + ch - (val / maxY) * ch;
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     ctx.stroke();
 
+    // Glow effect under/over the line
+    ctx.globalAlpha = 0.08;
+    ctx.lineWidth = 6;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 2;
+
     // Signal fire marker
-    if (progress >= 45) {
-      const sx = pl + 0.45 * cw;
-      ctx.setLineDash([3, 3]); ctx.strokeStyle = "#00ff88"; ctx.lineWidth = 0.5; ctx.globalAlpha = 0.4;
+    if (progress >= signalPct * 100) {
+      const sx = pl + signalPct * cw;
+      ctx.setLineDash([3, 3]); ctx.strokeStyle = lineColor; ctx.lineWidth = 0.5; ctx.globalAlpha = 0.4;
       ctx.beginPath(); ctx.moveTo(sx, pt); ctx.lineTo(sx, pt + ch); ctx.stroke();
       ctx.setLineDash([]); ctx.globalAlpha = 1;
-      ctx.fillStyle = "#00ff88"; ctx.font = "8px 'Share Tech Mono', monospace"; ctx.textAlign = "center";
-      ctx.fillText("SIGNAL FIRED", sx, h - 4);
+      ctx.fillStyle = lineColor; ctx.font = "8px 'Share Tech Mono', monospace"; ctx.textAlign = "center";
+      ctx.fillText(isDump ? "DUMP DETECTED" : "SIGNAL FIRED", sx, h - 4);
     }
 
     // X axis
@@ -332,7 +405,11 @@ export default function ReplayPage() {
       ) : (
         <div className="rp-replay">
           {signalFired && (
-            <div className="rp-flash"><span>⚡ SIGNAL FIRED</span></div>
+            <div className="rp-flash" style={{ background: selected.signal === "DUMP" ? "rgba(255,51,85,0.08)" : "rgba(0,255,136,0.08)" }}>
+              <span style={{ color: signalColor(selected.signal), textShadow: `0 0 40px ${signalColor(selected.signal)}` }}>
+                {selected.signal === "DUMP" ? "⚠ DUMP DETECTED" : "⚡ SIGNAL FIRED"}
+              </span>
+            </div>
           )}
 
           <div className="rp-replay-content">
@@ -376,7 +453,7 @@ export default function ReplayPage() {
               {/* Discord embed at signal fire */}
               {progress >= 45 && (
                 <div className="rp-discord">
-                  <div className="rp-discord-bar" />
+                  <div className="rp-discord-bar" style={{ background: signalColor(selected.signal) }} />
                   <div className="rp-discord-body">
                     <div className="rp-discord-title">🚨 AEGIS-LINK ALERT</div>
                     <div className="rp-discord-field"><span className="rp-dc-label">Coin</span><span className="rp-dc-val">${selected.coin}</span></div>
@@ -418,7 +495,7 @@ export default function ReplayPage() {
               {progress >= 88 && (
                 <div className="rp-outcome">
                   <div className="rp-outcome-coin">${selected.coin} — {selected.isLive ? "LIVE NOW" : selected.date}</div>
-                  <div className="rp-outcome-gain" style={{ color: signalColor(selected.signal) }}>
+                  <div className="rp-outcome-gain" style={{ color: signalColor(selected.signal), textShadow: `0 0 60px ${selected.signal === "DUMP" ? "rgba(255,51,85,0.3)" : "rgba(0,255,136,0.3)"}` }}>
                     {selected.isLive ? `SCORE ${selected.score.toFixed(0)}` : `+${selected.price_24h_pct.toFixed(0)}%`}
                   </div>
                   <div className="rp-outcome-label">
@@ -498,12 +575,12 @@ export default function ReplayPage() {
         .rp-replay { flex: 1; max-width: 1400px; margin: 0 auto; width: 100%; padding: 0 24px 48px; position: relative; }
         .rp-flash {
           position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-          background: rgba(0,255,136,0.08); display: flex; align-items: center; justify-content: center;
+          display: flex; align-items: center; justify-content: center;
           z-index: 100; animation: flashFade 2s ease-out forwards; pointer-events: none;
         }
         .rp-flash span {
-          font-family: var(--display); font-weight: 800; font-size: 48px; color: var(--pump);
-          text-shadow: 0 0 40px var(--pump); animation: flashScale 0.5s ease-out;
+          font-family: var(--display); font-weight: 800; font-size: 48px;
+          animation: flashScale 0.5s ease-out;
         }
         @keyframes flashFade { 0%{opacity:1}70%{opacity:1}100%{opacity:0} }
         @keyframes flashScale { 0%{transform:scale(0.5);opacity:0}100%{transform:scale(1);opacity:1} }
@@ -540,7 +617,7 @@ export default function ReplayPage() {
         /* Discord */
         .rp-discord { display: flex; background: #2b2d31; border: 1px solid #3b3d44; animation: slideIn 0.5s ease-out; }
         @keyframes slideIn { from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1} }
-        .rp-discord-bar { width: 4px; background: var(--pump); flex-shrink: 0; }
+        .rp-discord-bar { width: 4px; flex-shrink: 0; }
         .rp-discord-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
         .rp-discord-title { font-family: var(--display); font-weight: 700; font-size: 14px; color: #f2f3f5; }
         .rp-discord-field { display: flex; gap: 8px; font-size: 12px; }

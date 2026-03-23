@@ -158,7 +158,7 @@ export default function CampaignsPage() {
           height: 80px;
           display: flex;
           align-items: center;
-          background: rgba(8, 12, 20, 0.4);
+          background: var(--surface-glass);
         }
         .stats-inner {
           max-width: 1400px;

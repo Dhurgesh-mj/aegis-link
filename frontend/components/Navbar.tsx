@@ -14,12 +14,25 @@ export default function Navbar() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [username, setUsername] = useState("");
   const [mounted, setMounted] = useState(false);
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
 
   useEffect(() => {
     setLoggedIn(isLoggedIn());
     setUsername(getCurrentUsername());
+    // Restore saved theme
+    const saved = localStorage.getItem("aegis_theme") as "dark" | "light" | null;
+    const initial = saved || "dark";
+    setTheme(initial);
+    document.documentElement.setAttribute("data-theme", initial);
     setMounted(true);
   }, []);
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    document.documentElement.setAttribute("data-theme", next);
+    localStorage.setItem("aegis_theme", next);
+  };
 
   const handleLogout = () => {
     clearToken();
@@ -105,6 +118,29 @@ export default function Navbar() {
 
         {/* Right side */}
         <div className="navbar-right">
+          {/* Theme toggle */}
+          <button onClick={toggleTheme} className="theme-toggle" aria-label="Toggle theme" title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
+            {theme === "dark" ? (
+              /* Sun icon */
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="5" />
+                <line x1="12" y1="1" x2="12" y2="3" />
+                <line x1="12" y1="21" x2="12" y2="23" />
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                <line x1="1" y1="12" x2="3" y2="12" />
+                <line x1="21" y1="12" x2="23" y2="12" />
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+              </svg>
+            ) : (
+              /* Moon icon */
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+              </svg>
+            )}
+          </button>
+
           {loggedIn ? (
             <>
               <div className="nav-user-chip">
@@ -128,12 +164,13 @@ export default function Navbar() {
           position: sticky;
           top: 0;
           z-index: 100;
-          background: rgba(4, 5, 10, 0.9);
+          background: var(--navbar-bg);
           backdrop-filter: blur(16px) saturate(1.5);
           border-bottom: 1px solid var(--border);
           padding: 0 24px;
           height: 56px;
           overflow: hidden;
+          transition: background 0.4s ease;
         }
 
         /* Sweep line at bottom */
@@ -320,6 +357,31 @@ export default function Navbar() {
           color: var(--accent2);
           border-color: var(--accent2);
           box-shadow: 0 0 12px rgba(255, 45, 107, 0.15);
+        }
+
+        /* Theme toggle */
+        .theme-toggle {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 32px;
+          height: 32px;
+          border: 1px solid var(--border);
+          background: transparent;
+          color: var(--muted);
+          cursor: crosshair;
+          transition: all 0.3s ease;
+        }
+        .theme-toggle:hover {
+          color: var(--accent);
+          border-color: var(--accent);
+          box-shadow: 0 0 12px rgba(0, 255, 224, 0.15);
+        }
+        .theme-toggle svg {
+          transition: transform 0.3s ease;
+        }
+        .theme-toggle:hover svg {
+          transform: rotate(30deg);
         }
       `}</style>
     </nav>

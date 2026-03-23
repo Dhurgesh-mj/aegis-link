@@ -116,7 +116,7 @@ export default function LandingPage() {
 
       {/* ═══ FLOATING PARTICLES ═══ */}
       <div className="particles" aria-hidden="true">
-        {Array.from({ length: 20 }).map((_, i) => (
+        {mounted && Array.from({ length: 20 }).map((_, i) => (
           <div
             key={i}
             className="particle"

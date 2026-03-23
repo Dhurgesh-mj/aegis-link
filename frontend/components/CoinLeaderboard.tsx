@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { getSignals, getChart, type ChartPoint, type Signal } from "@/lib/api";
 import { formatSentimentLabel } from "@/lib/formatSentiment";
 import HypeScoreBar from "./HypeScoreBar";
@@ -112,9 +112,8 @@ export default function CoinLeaderboard() {
               </tr>
             ) : (
               signals.map((signal, index) => (
-                <>
+                <Fragment key={signal.coin}>
                   <tr
-                    key={signal.coin}
                     className={`lb-row ${expanded === signal.coin ? "lb-row--expanded" : ""} ${signal.stale ? "lb-row--stale" : ""}`}
                     onClick={() => toggleExpand(signal.coin)}
                   >
@@ -228,7 +227,7 @@ export default function CoinLeaderboard() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))
             )}
           </tbody>
@@ -399,7 +398,9 @@ export default function CoinLeaderboard() {
         }
         .trend-wrap {
           margin-bottom: 12px;
-          padding: 4px 0;
+          padding: 8px 0;
+          position: relative;
+          overflow: visible;
         }
         .trend-loading {
           font-family: var(--mono);

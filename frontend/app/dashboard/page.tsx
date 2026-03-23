@@ -212,7 +212,7 @@ export default function DashboardPage() {
           height: 80px;
           display: flex;
           align-items: center;
-          background: rgba(8, 12, 20, 0.4);
+          background: var(--surface-glass);
         }
         .stats-inner {
           max-width: 1400px;
@@ -288,7 +288,7 @@ export default function DashboardPage() {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          background: rgba(8, 12, 20, 0.5);
+          background: var(--surface-glass);
           font-family: var(--mono);
           font-size: 10px;
           letter-spacing: 0.1em;
@@ -333,6 +333,7 @@ export default function DashboardPage() {
           .dashboard-content {
             flex-direction: column;
           }
+
           .panel-left, .panel-right {
             flex: none;
             min-height: 50vh;

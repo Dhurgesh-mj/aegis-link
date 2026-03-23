@@ -1,6 +1,7 @@
 /* frontend/app/globals.css */
 /* Aegis-Link — Premium SOC Terminal Design System */
 /* Animated grid, scanlines, particles, glitch utilities */
+/* Supports dark (default) and light (data-theme="light") modes */
 
 :root {
   --bg: #04050a;
@@ -17,6 +18,58 @@
   --mono: "Share Tech Mono", monospace;
   --display: "Syne", sans-serif;
   --body: "DM Sans", sans-serif;
+  /* Overlay opacities (overridden in light mode) */
+  --grid-opacity: 0.025;
+  --grid-pulse-lo: 0.6;
+  --grid-pulse-hi: 1;
+  --scan-opacity: 0.03;
+  --noise-opacity: 0.015;
+  --navbar-bg: rgba(4, 5, 10, 0.9);
+  --surface-glass: rgba(8, 12, 20, 0.4);
+}
+
+/* ═══ LIGHT THEME ═══ */
+[data-theme="light"] {
+  --bg: #f0f2f5;
+  --surface: #ffffff;
+  --border: #d4d9e2;
+  --accent: #00b8a0;
+  --accent2: #d91a57;
+  --accent3: #6318c9;
+  --text: #1a1e2c;
+  --muted: #6b7a94;
+  --pump: #00a35c;
+  --dump: #d4213b;
+  --watch: #c99200;
+  --grid-opacity: 0.04;
+  --grid-pulse-lo: 0.3;
+  --grid-pulse-hi: 0.5;
+  --scan-opacity: 0.008;
+  --noise-opacity: 0.005;
+  --navbar-bg: rgba(240, 242, 245, 0.92);
+  --surface-glass: rgba(255, 255, 255, 0.5);
+}
+
+/* Light mode grid uses dark subtle lines instead of cyan */
+[data-theme="light"] body::before {
+  background-image:
+    linear-gradient(rgba(0, 0, 0, var(--grid-opacity)) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, var(--grid-opacity)) 1px, transparent 1px);
+}
+
+/* Light mode scanlines use dark */
+[data-theme="light"] body::after {
+  background: repeating-linear-gradient(0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.015) 2px,
+    rgba(0, 0, 0, 0.015) 4px);
+  opacity: var(--scan-opacity);
+}
+
+/* Light mode noise */
+[data-theme="light"] .noise-overlay {
+  opacity: var(--noise-opacity);
 }
 
 * {
@@ -40,6 +93,7 @@ body {
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background 0.4s ease, color 0.4s ease;
 }
 
 /* ═══ ANIMATED GRID BACKGROUND ═══ */
@@ -53,15 +107,16 @@ body::before {
   pointer-events: none;
   z-index: 0;
   background-image:
-    linear-gradient(rgba(0, 255, 224, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 255, 224, 0.025) 1px, transparent 1px);
+    linear-gradient(rgba(0, 255, 224, var(--grid-opacity)) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 224, var(--grid-opacity)) 1px, transparent 1px);
   background-size: 40px 40px;
   animation: gridPulse 8s ease-in-out infinite;
+  transition: opacity 0.4s ease;
 }
 
 @keyframes gridPulse {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
+  0%, 100% { opacity: var(--grid-pulse-lo); }
+  50% { opacity: var(--grid-pulse-hi); }
 }
 
 /* ═══ SCANLINE OVERLAY ═══ */
@@ -74,13 +129,14 @@ body::after {
   height: 100%;
   pointer-events: none;
   z-index: 1;
-  opacity: 0.03;
+  opacity: var(--scan-opacity);
   background: repeating-linear-gradient(0deg,
     transparent,
     transparent 2px,
     rgba(0, 255, 224, 0.08) 2px,
     rgba(0, 255, 224, 0.08) 4px);
   animation: scanDrift 0.1s linear infinite;
+  transition: opacity 0.4s ease;
 }
 
 @keyframes scanDrift {
@@ -242,9 +298,10 @@ input, textarea, select {
   height: 200%;
   pointer-events: none;
   z-index: 1;
-  opacity: 0.015;
+  opacity: var(--noise-opacity);
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
   animation: noiseShift 0.5s steps(4) infinite;
+  transition: opacity 0.4s ease;
 }
 
 @keyframes noiseShift {
